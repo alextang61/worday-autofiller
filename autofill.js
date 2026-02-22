@@ -105,51 +105,87 @@ function autofillApplication(data) {
   promises.push(selectWorkdayDropdown(data.phone_type, 'phone device type', 'phone type', 'device type'));
   promises.push(selectWorkdayDropdown(data.state,      'state', 'province', 'region'));
 
-  // Scan the page for all currently-visible job entry containers (3 strategies).
+  // Scan the page for all currently-visible job entry containers.
   // Called repeatedly after each "Add" click so newly-appeared forms are picked up.
   function findJobSections() {
-    let sections = Array.from(document.querySelectorAll(
+    // Primary: anchor on formField-jobTitle (one per section in Workday's fkit DOM).
+    // Walk up from each anchor to find the closest ancestor that contains exactly one
+    // formField-jobTitle (= the per-section container, not the whole page).
+    // Sort by the numeric index in aria-labelledby="Work-Experience-N-panel".
+    const titleAnchors = Array.from(
+      document.querySelectorAll('[data-automation-id="formField-jobTitle"]')
+    );
+    if (titleAnchors.length > 0) {
+      const sections = titleAnchors.map(anchor => {
+        let el = anchor.parentElement;
+        for (let i = 0; i < 12; i++) {
+          if (!el || el === document.body) break;
+          if (el.querySelectorAll('[data-automation-id="formField-jobTitle"]').length === 1) return el;
+          el = el.parentElement;
+        }
+        return anchor.parentElement;
+      }).filter(Boolean);
+
+      // Sort by the N in aria-labelledby="Work-Experience-N-panel" so sections
+      // are always processed in top-to-bottom order regardless of DOM quirks.
+      return sections.sort((a, b) => {
+        const panelN = el => {
+          const f = el.querySelector('[data-automation-id="formField-jobTitle"]');
+          return parseInt((f?.getAttribute('aria-labelledby') || '').match(/\d+/)?.[0] ?? '0');
+        };
+        return panelN(a) - panelN(b);
+      });
+    }
+
+    // Fallback A: numbered workExperience containers
+    const byAttr = Array.from(document.querySelectorAll(
       "[data-automation-id^='workExperience-'], [data-automation-id^='workHistory-']"
     ));
-    if (sections.length === 0) {
-      const seen = new WeakSet();
-      sections = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
-        .filter(l => {
-          const t = l.textContent.trim().toLowerCase();
-          return t === 'job title' || t === 'position title' || t === 'title' || t === 'role';
-        })
-        .map(label => {
-          let el = label.parentElement;
-          for (let i = 0; i < 8; i++) {
-            if (!el || el === document.body) break;
-            const innerLabels = Array.from(el.querySelectorAll("label, [data-automation-id$='Label']"))
-              .map(l => l.textContent.trim().toLowerCase());
-            const hasCompany = innerLabels.some(t => t.includes('company') || t.includes('employer') || t.includes('organization'));
-            const titleCount = innerLabels.filter(t => t === 'job title' || t === 'title' || t === 'position title').length;
-            if (hasCompany && titleCount === 1 && !seen.has(el)) { seen.add(el); return el; }
-            el = el.parentElement;
-          }
-          return null;
-        })
-        .filter(Boolean);
-    }
-    if (sections.length === 0) {
-      sections = Array.from(document.querySelectorAll(
-        "[data-automation-id='workExperienceSection'], [data-automation-id='workHistorySection'], " +
-        "[class*='workExperience']:not(label):not(input), [class*='WorkHistory']:not(label):not(input)"
-      ));
-    }
-    return sections;
+    if (byAttr.length > 0) return byAttr;
+
+    // Fallback B: walk up from "Job Title" labels, require a sibling company label
+    const seen = new WeakSet();
+    const byLabel = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
+      .filter(l => {
+        const t = l.textContent.trim().toLowerCase();
+        return t === 'job title' || t === 'position title' || t === 'title' || t === 'role';
+      })
+      .map(label => {
+        let el = label.parentElement;
+        for (let i = 0; i < 8; i++) {
+          if (!el || el === document.body) break;
+          const innerLabels = Array.from(el.querySelectorAll("label, [data-automation-id$='Label']"))
+            .map(l => l.textContent.trim().toLowerCase());
+          const hasCompany = innerLabels.some(t => t.includes('company') || t.includes('employer') || t.includes('organization'));
+          const titleCount = innerLabels.filter(t => t === 'job title' || t === 'title' || t === 'position title').length;
+          if (hasCompany && titleCount === 1 && !seen.has(el)) { seen.add(el); return el; }
+          el = el.parentElement;
+        }
+        return null;
+      })
+      .filter(Boolean);
+    if (byLabel.length > 0) return byLabel;
+
+    // Fallback C: whole section containers
+    return Array.from(document.querySelectorAll(
+      "[data-automation-id='workExperienceSection'], [data-automation-id='workHistorySection'], " +
+      "[class*='workExperience']:not(label):not(input), [class*='WorkHistory']:not(label):not(input)"
+    ));
   }
 
   // Find the "Add work experience" button that reveals a new blank job form.
   function findAddJobButton() {
+    // Workday's own automation ID for the add-row button on the work experience section
     const byAttr = document.querySelector(
-      "[data-automation-id*='workExperience'][data-automation-id*='dd' i], " +
-      "[data-automation-id*='workHistory'][data-automation-id*='dd' i], " +
-      "[data-automation-id='add-work-experience'], [data-automation-id='addWorkExperience']"
+      "[data-automation-id='workExperienceSection-addButton'], " +
+      "[data-automation-id='workHistorySection-addButton'], " +
+      "[data-automation-id='add-work-experience'], " +
+      "[data-automation-id='addWorkExperience'], " +
+      "[data-automation-id='workExperience-addButton'], " +
+      "[data-automation-id='workHistory-addButton']"
     );
     if (byAttr) return byAttr;
+    // Fallback: any button whose text mentions adding work/experience
     return Array.from(document.querySelectorAll('button, [role="button"]')).find(btn => {
       const txt = btn.textContent.trim().toLowerCase();
       return txt.includes('add') && (
