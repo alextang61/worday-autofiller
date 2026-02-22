@@ -11,11 +11,9 @@ function autofillApplication(data) {
     if (!el || value === undefined || value === null || value === '') return false;
     const proto  = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-    el.dispatchEvent(new Event('focus', { bubbles: true }));
     try { if (setter) setter.call(el, value); else el.value = value; } catch { el.value = value; }
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('input',  { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('blur', { bubbles: true }));
     return true;
   }
 
@@ -56,10 +54,18 @@ function autofillApplication(data) {
 
   function selectWorkdayDropdown(optionText, ...labelTerms) {
     if (!optionText) return Promise.resolve();
+    // Prefer a native <select> — it doesn't trigger Workday's XState machine via click events.
+    const sel = findByLabel(...labelTerms);
+    if (sel?.tagName === 'SELECT') {
+      const opt = Array.from(sel.options).find(o => o.text.toLowerCase().includes(optionText.toLowerCase()));
+      if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); filled++; }
+      return Promise.resolve();
+    }
+    // Fallback: Workday custom React dropdown — click the trigger button, then the option.
     const label = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
       .find(l => labelTerms.some(t => l.textContent.trim().toLowerCase().includes(t.toLowerCase())));
     const container = label?.closest('[data-automation-id], div, li') || label?.parentElement;
-    const btn = container?.querySelector('button[aria-haspopup], button[aria-expanded]') || container?.querySelector('button');
+    const btn = container?.querySelector('button[aria-haspopup], button[aria-expanded]');
     if (btn) {
       btn.click();
       return new Promise(resolve => {
@@ -67,14 +73,10 @@ function autofillApplication(data) {
           const options = document.querySelectorAll("[role='option'], [data-automation-id='promptOption'], li[tabindex]");
           const match = Array.from(options).find(o => o.textContent.trim().toLowerCase().includes(optionText.toLowerCase()));
           if (match) { match.click(); filled++; }
+          else document.body.click(); // close the dropdown if no match
           resolve();
-        }, 450);
+        }, 600);
       });
-    }
-    const sel = findByLabel(...labelTerms);
-    if (sel?.tagName === 'SELECT') {
-      const opt = Array.from(sel.options).find(o => o.text.toLowerCase().includes(optionText.toLowerCase()));
-      if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); filled++; }
     }
     return Promise.resolve();
   }
@@ -102,7 +104,6 @@ function autofillApplication(data) {
     }
   }
 
-  const promises = [];
   fill(data.first_name, 'first name', 'given name');
   fill(data.last_name,  'last name',  'surname', 'family name');
   fill(data.email,      'email');
@@ -120,8 +121,11 @@ function autofillApplication(data) {
   fill(data.city,     'city', 'municipality');
   fill(data.zip,      'postal code', 'zip code', 'zip');
   fill(data.country,  'country');
-  promises.push(selectWorkdayDropdown(data.phone_type, 'phone device type', 'phone type', 'device type'));
-  promises.push(selectWorkdayDropdown(data.state,      'state', 'province', 'region'));
+  // Run dropdowns sequentially to avoid concurrent state machine transitions in Workday.
+  const dropdownsPromise = (async () => {
+    await selectWorkdayDropdown(data.phone_type, 'phone device type', 'phone type', 'device type');
+    await selectWorkdayDropdown(data.state,      'state', 'province', 'region');
+  })();
 
   // Scan the page for all currently-visible job entry containers.
   // Called repeatedly after each "Add" click so newly-appeared forms are picked up.
@@ -319,7 +323,7 @@ function autofillApplication(data) {
     }
   })();
 
-  return Promise.all([...promises, jobsPromise]).then(() => ({ success: true, filled }));
+  return Promise.all([dropdownsPromise, jobsPromise]).then(() => ({ success: true, filled }));
 }
 
 function autofillQuestions(data) {
