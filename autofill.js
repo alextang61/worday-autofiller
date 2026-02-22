@@ -105,37 +105,58 @@ function autofillApplication(data) {
   promises.push(selectWorkdayDropdown(data.phone_type, 'phone device type', 'phone type', 'device type'));
   promises.push(selectWorkdayDropdown(data.state,      'state', 'province', 'region'));
 
-  // Find individual job entry containers (3 strategies)
-  let jobSections = Array.from(document.querySelectorAll(
-    "[data-automation-id^='workExperience-'], [data-automation-id^='workHistory-']"
-  ));
-  if (jobSections.length === 0) {
-    const seen = new WeakSet();
-    jobSections = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
-      .filter(l => {
-        const t = l.textContent.trim().toLowerCase();
-        return t === 'job title' || t === 'position title' || t === 'title' || t === 'role';
-      })
-      .map(label => {
-        let el = label.parentElement;
-        for (let i = 0; i < 8; i++) {
-          if (!el || el === document.body) break;
-          const innerLabels = Array.from(el.querySelectorAll("label, [data-automation-id$='Label']"))
-            .map(l => l.textContent.trim().toLowerCase());
-          const hasCompany = innerLabels.some(t => t.includes('company') || t.includes('employer') || t.includes('organization'));
-          const titleCount = innerLabels.filter(t => t === 'job title' || t === 'title' || t === 'position title').length;
-          if (hasCompany && titleCount === 1 && !seen.has(el)) { seen.add(el); return el; }
-          el = el.parentElement;
-        }
-        return null;
-      })
-      .filter(Boolean);
-  }
-  if (jobSections.length === 0) {
-    jobSections = Array.from(document.querySelectorAll(
-      "[data-automation-id='workExperienceSection'], [data-automation-id='workHistorySection'], " +
-      "[class*='workExperience']:not(label):not(input), [class*='WorkHistory']:not(label):not(input)"
+  // Scan the page for all currently-visible job entry containers (3 strategies).
+  // Called repeatedly after each "Add" click so newly-appeared forms are picked up.
+  function findJobSections() {
+    let sections = Array.from(document.querySelectorAll(
+      "[data-automation-id^='workExperience-'], [data-automation-id^='workHistory-']"
     ));
+    if (sections.length === 0) {
+      const seen = new WeakSet();
+      sections = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
+        .filter(l => {
+          const t = l.textContent.trim().toLowerCase();
+          return t === 'job title' || t === 'position title' || t === 'title' || t === 'role';
+        })
+        .map(label => {
+          let el = label.parentElement;
+          for (let i = 0; i < 8; i++) {
+            if (!el || el === document.body) break;
+            const innerLabels = Array.from(el.querySelectorAll("label, [data-automation-id$='Label']"))
+              .map(l => l.textContent.trim().toLowerCase());
+            const hasCompany = innerLabels.some(t => t.includes('company') || t.includes('employer') || t.includes('organization'));
+            const titleCount = innerLabels.filter(t => t === 'job title' || t === 'title' || t === 'position title').length;
+            if (hasCompany && titleCount === 1 && !seen.has(el)) { seen.add(el); return el; }
+            el = el.parentElement;
+          }
+          return null;
+        })
+        .filter(Boolean);
+    }
+    if (sections.length === 0) {
+      sections = Array.from(document.querySelectorAll(
+        "[data-automation-id='workExperienceSection'], [data-automation-id='workHistorySection'], " +
+        "[class*='workExperience']:not(label):not(input), [class*='WorkHistory']:not(label):not(input)"
+      ));
+    }
+    return sections;
+  }
+
+  // Find the "Add work experience" button that reveals a new blank job form.
+  function findAddJobButton() {
+    const byAttr = document.querySelector(
+      "[data-automation-id*='workExperience'][data-automation-id*='dd' i], " +
+      "[data-automation-id*='workHistory'][data-automation-id*='dd' i], " +
+      "[data-automation-id='add-work-experience'], [data-automation-id='addWorkExperience']"
+    );
+    if (byAttr) return byAttr;
+    return Array.from(document.querySelectorAll('button, [role="button"]')).find(btn => {
+      const txt = btn.textContent.trim().toLowerCase();
+      return txt.includes('add') && (
+        txt.includes('experience') || txt.includes('work') || txt.includes('position') ||
+        txt.includes('job') || txt.includes('another') || txt === 'add' || txt === '+ add'
+      );
+    }) || null;
   }
 
   function fillJobInSection(section, job) {
@@ -179,18 +200,57 @@ function autofillApplication(data) {
     sectionFill(job.description, 'description', 'responsibilities', 'duties', 'summary');
   }
 
-  if (jobSections.length > 0 && data.jobs?.length) {
-    data.jobs.forEach((job, i) => { if (jobSections[i]) fillJobInSection(jobSections[i], job); });
-  } else if (data.jobs?.length) {
-    const job = data.jobs[0];
-    fill(job.title,       'job title', 'title', 'position');
-    fill(job.company,     'company', 'employer');
-    fillDate(job.start_date, 'from', 'start date');
-    if (!job.currently_working) fillDate(job.end_date, 'to', 'end date', 'through');
-    fill(job.description, 'description', 'responsibilities');
-  }
+  // Fill jobs sequentially: fill visible forms first, then click "Add" for each
+  // remaining job and wait for the new form to appear before filling it.
+  const jobsPromise = (async () => {
+    if (!data.jobs?.length) return;
+    const initialSections = findJobSections();
 
-  return Promise.all(promises).then(() => ({ success: true, filled }));
+    if (initialSections.length >= data.jobs.length) {
+      // All forms already on the page (e.g. pre-populated from a resume upload)
+      data.jobs.forEach((job, i) => fillJobInSection(initialSections[i], job));
+      return;
+    }
+
+    if (initialSections.length === 0) {
+      // No job section found at all — try filling via global labels as last resort
+      const job = data.jobs[0];
+      fill(job.title,       'job title', 'title', 'position');
+      fill(job.company,     'company', 'employer');
+      fillDate(job.start_date, 'from', 'start date');
+      if (!job.currently_working) fillDate(job.end_date, 'to', 'end date', 'through');
+      fill(job.description, 'description', 'responsibilities');
+      return;
+    }
+
+    // Fill the forms that are already visible
+    initialSections.forEach((section, i) => fillJobInSection(section, data.jobs[i]));
+
+    // For each remaining job, click "Add" and wait for the new form to appear
+    for (let i = initialSections.length; i < data.jobs.length; i++) {
+      const addBtn = findAddJobButton();
+      if (!addBtn) break;
+
+      const countBefore = findJobSections().length;
+      addBtn.click();
+
+      // Poll up to 3 s for the new form to appear in the DOM
+      let newSection = null;
+      for (let t = 0; t < 30; t++) {
+        await new Promise(r => setTimeout(r, 100));
+        const current = findJobSections();
+        if (current.length > countBefore) {
+          newSection = current[current.length - 1];
+          break;
+        }
+      }
+
+      if (newSection) fillJobInSection(newSection, data.jobs[i]);
+      else break; // "Add" button gone or form didn't appear — stop
+    }
+  })();
+
+  return Promise.all([...promises, jobsPromise]).then(() => ({ success: true, filled }));
 }
 
 function autofillQuestions(data) {
