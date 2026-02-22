@@ -244,32 +244,46 @@ function autofillQuestions(data) {
     const container = findContainer(...labelTerms);
     if (!container) return;
 
-    // Find the specific question element that matched our search terms
-    const questionEl = [...document.querySelectorAll(
-      "label, [data-automation-id$='Label'], legend, " +
-      "[data-automation-id='questionSetQuestion'], [data-automation-id='questionSetHeader']"
-    )].find(el => labelTerms.some(t => el.textContent.trim().toLowerCase().includes(t.toLowerCase())));
+    // Prefer a specific questionSetQuestion element over a generic label, because generic
+    // labels also match radio-option text (e.g. a radio labeled "Yes, I need sponsorship"
+    // would incorrectly match a "sponsorship" search term).
+    const questionEl =
+      [...document.querySelectorAll("[data-automation-id='questionSetQuestion'], [data-automation-id='questionSetHeader']")]
+        .find(el => labelTerms.some(t => el.textContent.trim().toLowerCase().includes(t.toLowerCase()))) ||
+      [...document.querySelectorAll("label, [data-automation-id$='Label'], legend")]
+        .find(el => labelTerms.some(t => el.textContent.trim().toLowerCase().includes(t.toLowerCase())));
 
     const allRadios = Array.from(container.querySelectorAll('input[type=radio]'));
-
-    // When multiple radio-name groups share the same container (e.g. multiple Yes/No questions
-    // in one section), find the group whose first radio appears immediately after the question text.
-    // Without this, .find('yes'/'no') grabs the first match across ALL questions, causing wrong clicks.
     let targetRadios = allRadios;
+
     if (questionEl && allRadios.length > 0) {
-      const groups = {};
-      allRadios.forEach(r => { if (r.name) (groups[r.name] = groups[r.name] || []).push(r); });
-      const names = Object.keys(groups);
-      if (names.length > 1) {
-        const after = names.filter(n =>
-          questionEl.compareDocumentPosition(groups[n][0]) & Node.DOCUMENT_POSITION_FOLLOWING
+      // Find question-header elements inside the container that come AFTER questionEl.
+      // These mark where the NEXT question starts, giving us a boundary for our radios.
+      // Note: we intentionally exclude generic <label> here to avoid matching radio-option labels.
+      const laterQHeaders = [...container.querySelectorAll(
+        "[data-automation-id='questionSetQuestion'], [data-automation-id='questionSetHeader'], legend"
+      )].filter(q =>
+        q !== questionEl &&
+        (questionEl.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING)
+      );
+
+      // Radios that belong to our question: they appear after questionEl AND before the
+      // start of any later question. compareDocumentPosition(x) & 4 means x is following.
+      const narrowed = allRadios.filter(r => {
+        const afterThis = !!(questionEl.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING);
+        const beforeNext = laterQHeaders.length === 0 ||
+          laterQHeaders.every(q => !!(r.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING));
+        return afterThis && beforeNext;
+      });
+
+      if (narrowed.length > 0) {
+        targetRadios = narrowed;
+      } else {
+        // Fallback: at least filter to radios that come after the question element
+        const afterOnly = allRadios.filter(r =>
+          questionEl.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING
         );
-        if (after.length > 0) {
-          after.sort((a, b) =>
-            groups[a][0].getBoundingClientRect().top - groups[b][0].getBoundingClientRect().top
-          );
-          targetRadios = groups[after[0]];
-        }
+        if (afterOnly.length > 0) targetRadios = afterOnly;
       }
     }
 
