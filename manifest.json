@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Workday Autofill",
+  "version": "1.0",
+  "description": "Automatically corrects and fills Workday job application fields.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "*://*.myworkdayjobs.com/*",
+    "*://*.workday.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}

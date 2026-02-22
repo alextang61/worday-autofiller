@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      width: 380px;
+      background: #f0f2f5;
+      color: #1a1a1a;
+      font-size: 12px;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #0052cc, #0073e6);
+      color: white;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-icon { font-size: 20px; }
+    .header h1 { font-size: 14px; font-weight: 700; }
+    .header p  { font-size: 10px; opacity: 0.8; margin-top: 1px; }
+
+    .tabs {
+      display: flex;
+      background: white;
+      border-bottom: 2px solid #e0e0e0;
+      padding: 0 6px;
+      gap: 2px;
+    }
+    .tab {
+      flex: 1;
+      padding: 9px 2px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #888;
+      text-align: center;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .tab.active { color: #0052cc; border-bottom-color: #0052cc; }
+    .tab-panel  { display: none; }
+    .tab-panel.active { display: block; }
+
+    .fill-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 8px 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .btn-fill {
+      flex: 1;
+      background: linear-gradient(135deg, #0052cc, #0073e6);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn-fill:hover  { opacity: 0.9; }
+    .btn-fill:active { transform: scale(0.97); }
+    .btn-fill.flashing { animation: flash 0.5s ease; }
+    @keyframes flash {
+      0%   { background: linear-gradient(135deg, #0052cc, #0073e6); }
+      40%  { background: linear-gradient(135deg, #1e7e34, #28a745); }
+      100% { background: linear-gradient(135deg, #0052cc, #0073e6); }
+    }
+
+    .filled-badge {
+      background: #1e7e34;
+      color: white;
+      border-radius: 12px;
+      padding: 3px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      opacity: 0;
+      transition: opacity 0.3s;
+      white-space: nowrap;
+    }
+    .filled-badge.show { opacity: 1; }
+
+    .section {
+      background: white;
+      margin: 8px 8px 0;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      overflow: hidden;
+    }
+    .section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #666;
+      padding: 8px 12px 6px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .field-group {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .row { display: flex; gap: 7px; }
+    .field { display: flex; flex-direction: column; flex: 1; gap: 3px; }
+
+    label { font-size: 10px; color: #555; font-weight: 600; }
+
+    input, select, textarea {
+      border: 1px solid #d0d0d0;
+      border-radius: 5px;
+      padding: 5px 7px;
+      font-size: 12px;
+      color: #1a1a1a;
+      background: #fff;
+      width: 100%;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: #0052cc;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 56px;
+      font-family: inherit;
+      line-height: 1.4;
+    }
+
+    .job-entry { border: 1px solid #e8e8e8; border-radius: 6px; overflow: hidden; margin-bottom: 7px; }
+    .job-header {
+      background: #f5f7fa;
+      padding: 7px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+    .job-header .job-label { font-size: 11px; font-weight: 700; color: #333; }
+    .job-header .toggle    { font-size: 10px; color: #888; }
+    .job-body {
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      border-top: 1px solid #eee;
+    }
+    .job-body.collapsed { display: none; }
+    .remove-job { font-size: 10px; color: #cc0000; cursor: pointer; text-align: right; }
+    .remove-job:hover { text-decoration: underline; }
+
+    .add-btn {
+      margin: 0 8px 8px;
+      width: calc(100% - 16px);
+      background: #f0f4ff;
+      border: 1px dashed #99b8f0;
+      border-radius: 6px;
+      color: #0052cc;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 7px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .add-btn:hover { background: #e3ecff; }
+
+    .btn-secondary {
+      background: white;
+      color: #444;
+      border: 1px solid #d0d0d0;
+      border-radius: 6px;
+      padding: 7px;
+      font-size: 11px;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.15s;
+    }
+    .btn-secondary:hover { background: #f5f5f5; }
+
+    .btn-danger {
+      background: white;
+      color: #c0392b;
+      border: 1px solid #f5c6c6;
+      border-radius: 6px;
+      padding: 7px;
+      font-size: 11px;
+      cursor: pointer;
+      width: 100%;
+    }
+    .btn-danger:hover { background: #fdecea; }
+
+    #status {
+      margin: 0 8px 8px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      display: none;
+    }
+    #status.success { background: #e6f4ea; color: #1e7e34; border: 1px solid #b7dfbf; display: block; }
+    #status.error   { background: #fdecea; color: #c0392b; border: 1px solid #f5c6c6; display: block; }
+    #status.info    { background: #e8f0fe; color: #0052cc; border: 1px solid #c0d4f7; display: block; }
+
+    .checkbox-row { display: flex; align-items: center; gap: 6px; }
+    .checkbox-row input[type="checkbox"] { width: auto; margin: 0; }
+    .checkbox-row label { font-size: 11px; color: #444; font-weight: 500; }
+
+    .pw-wrapper { position: relative; }
+    .pw-wrapper input { padding-right: 30px; }
+    .pw-toggle {
+      position: absolute;
+      right: 7px; top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 13px; color: #888;
+      user-select: none;
+    }
+
+    .info-banner {
+      background: #fffbe6;
+      border: 1px solid #ffe58f;
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 10px;
+      color: #7d5a00;
+      line-height: 1.5;
+    }
+
+    .hint { font-size: 10px; color: #999; margin-top: 1px; }
+
+    .actions-bottom {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #f0f2f5;
+    }
+
+    .panel-scroll { max-height: 490px; overflow-y: auto; }
+
+    input[type="file"] { padding: 3px; font-size: 11px; color: #555; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-icon">📋</div>
+  <div>
+    <h1>Workday Autofill</h1>
+    <p>Fix resume parsing mistakes instantly</p>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="application">📋 Apply</div>
+  <div class="tab" data-tab="questions">❓ Questions</div>
+  <div class="tab" data-tab="disclosures">🏳 Disclosures</div>
+  <div class="tab" data-tab="account">🔐 Account</div>
+  <div class="tab" data-tab="data">💾 Data</div>
+</div>
+
+
+<!-- ═══════════════════ APPLICATION ═══════════════════ -->
+<div class="tab-panel active" id="tab-application">
+  <div class="fill-bar">
+    <button class="btn-fill" id="run-btn">⚡ Autofill Application</button>
+    <span class="filled-badge" id="badge-app"></span>
+  </div>
+  <div class="panel-scroll">
+
+    <div class="section">
+      <div class="section-title">Contact Information</div>
+      <div class="field-group">
+        <div class="row">
+          <div class="field"><label>First Name</label><input type="text" id="first_name" placeholder="Jane" /></div>
+          <div class="field"><label>Last Name</label><input type="text" id="last_name" placeholder="Doe" /></div>
+        </div>
+        <div class="field"><label>Email</label><input type="email" id="email" placeholder="jane@email.com" /></div>
+        <div class="row">
+          <div class="field"><label>Phone</label><input type="text" id="phone" placeholder="555-123-4567" /></div>
+          <div class="field">
+            <label>Phone Type</label>
+            <select id="phone_type">
+              <option value="Mobile">Mobile</option>
+              <option value="Home">Home</option>
+              <option value="Work">Work</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>LinkedIn URL</label>
+          <input type="url" id="linkedin" placeholder="https://linkedin.com/in/yourname" />
+        </div>
+        <div class="field"><label>Address Line 1</label><input type="text" id="address1" placeholder="123 Main St" /></div>
+        <div class="field"><label>Address Line 2 (optional)</label><input type="text" id="address2" placeholder="Apt 4B" /></div>
+        <div class="row">
+          <div class="field"><label>City</label><input type="text" id="city" placeholder="Atlanta" /></div>
+          <div class="field" style="max-width:82px"><label>Zip</label><input type="text" id="zip" placeholder="30301" /></div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>State</label>
+            <select id="state">
+              <option value="">-- Select --</option>
+              <option>Alabama</option><option>Alaska</option><option>Arizona</option><option>Arkansas</option>
+              <option>California</option><option>Colorado</option><option>Connecticut</option><option>Delaware</option>
+              <option>Florida</option><option>Georgia</option><option>Hawaii</option><option>Idaho</option>
+              <option>Illinois</option><option>Indiana</option><option>Iowa</option><option>Kansas</option>
+              <option>Kentucky</option><option>Louisiana</option><option>Maine</option><option>Maryland</option>
+              <option>Massachusetts</option><option>Michigan</option><option>Minnesota</option><option>Mississippi</option>
+              <option>Missouri</option><option>Montana</option><option>Nebraska</option><option>Nevada</option>
+              <option>New Hampshire</option><option>New Jersey</option><option>New Mexico</option><option>New York</option>
+              <option>North Carolina</option><option>North Dakota</option><option>Ohio</option><option>Oklahoma</option>
+              <option>Oregon</option><option>Pennsylvania</option><option>Rhode Island</option><option>South Carolina</option>
+              <option>South Dakota</option><option>Tennessee</option><option>Texas</option><option>Utah</option>
+              <option>Vermont</option><option>Virginia</option><option>Washington</option><option>West Virginia</option>
+              <option>Wisconsin</option><option>Wyoming</option>
+            </select>
+          </div>
+          <div class="field"><label>Country</label><input type="text" id="country" placeholder="United States of America" /></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Work Experience</div>
+      <div id="jobs-container" class="field-group"></div>
+    </div>
+    <button class="add-btn" id="add-job-btn">+ Add Job</button>
+
+    <div class="actions-bottom">
+      <div class="row">
+        <button class="btn-secondary" id="save-btn">💾 Save Info</button>
+        <button class="btn-danger"    id="clear-btn">🗑 Clear Form</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════ QUESTIONS ═══════════════════ -->
+<div class="tab-panel" id="tab-questions">
+  <div class="fill-bar">
+    <button class="btn-fill" id="run-questions-btn">⚡ Autofill Questions</button>
+    <span class="filled-badge" id="badge-q"></span>
+  </div>
+  <div class="panel-scroll">
+
+    <div class="section">
+      <div class="section-title">Employment Eligibility</div>
+      <div class="field-group">
+        <div class="field">
+          <label>Legally Eligible for Employment in the US?</label>
+          <select id="q_eligible">
+            <option value="">-- Select --</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Require Visa Sponsorship Now or in the Future?</label>
+          <select id="q_sponsorship">
+            <option value="">-- Select --</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Work Authorization Status</label>
+          <select id="q_work_auth">
+            <option value="">-- Select --</option>
+            <option value="US Citizen">US Citizen</option>
+            <option value="Permanent Resident">Permanent Resident (Green Card)</option>
+            <option value="H-1B">H-1B Visa</option>
+            <option value="OPT/CPT">OPT / CPT</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>"How Did You Hear About Us?"</label>
+          <input type="text" id="q_referral" value="LinkedIn" placeholder="LinkedIn" />
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Compensation</div>
+      <div class="field-group">
+        <div class="field">
+          <label>Desired Salary / Salary Requirement</label>
+          <input type="text" id="q_salary" placeholder="e.g. 95000 or Negotiable" />
+        </div>
+        <div class="field">
+          <label>Salary Type</label>
+          <select id="q_salary_type">
+            <option value="">-- Select --</option>
+            <option value="Annual">Annual</option>
+            <option value="Hourly">Hourly</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions-bottom">
+      <button class="btn-secondary" id="save-questions-btn">💾 Save Answers</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════ DISCLOSURES ═══════════════════ -->
+<div class="tab-panel" id="tab-disclosures">
+  <div class="fill-bar">
+    <button class="btn-fill" id="run-disclosures-btn">⚡ Autofill Disclosures</button>
+    <span class="filled-badge" id="badge-d"></span>
+  </div>
+  <div class="panel-scroll">
+
+    <div class="section">
+      <div class="section-title">Voluntary Disclosures</div>
+      <div class="field-group">
+        <div class="info-banner">ℹ️ These are optional and voluntary. They are kept separate from application evaluation.</div>
+        <div class="field">
+          <label>Gender</label>
+          <select id="d_gender">
+            <option value="">-- Prefer not to answer --</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Non-Binary">Non-Binary / Third Gender</option>
+            <option value="Prefer not to disclose">Prefer not to disclose</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Ethnicity / Race</label>
+          <select id="d_ethnicity">
+            <option value="">-- Prefer not to answer --</option>
+            <option value="American Indian or Alaska Native">American Indian or Alaska Native</option>
+            <option value="Asian">Asian</option>
+            <option value="Black or African American">Black or African American</option>
+            <option value="Hispanic or Latino">Hispanic or Latino</option>
+            <option value="Native Hawaiian or Other Pacific Islander">Native Hawaiian or Other Pacific Islander</option>
+            <option value="White">White</option>
+            <option value="Two or More Races">Two or More Races</option>
+            <option value="I do not wish to answer">I do not wish to answer</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Veteran Status</label>
+          <select id="d_veteran">
+            <option value="">-- Prefer not to answer --</option>
+            <option value="I am not a protected veteran">I am not a protected veteran</option>
+            <option value="I identify as one or more classifications of a protected veteran">Protected Veteran</option>
+            <option value="I do not wish to answer">I do not wish to answer</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Disability Status</label>
+          <select id="d_disability">
+            <option value="">-- Prefer not to answer --</option>
+            <option value="Yes, I have a disability">Yes, I have a disability</option>
+            <option value="No, I do not have a disability">No, I do not have a disability</option>
+            <option value="I do not wish to answer">I do not wish to answer</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Self-Identification / Signature</div>
+      <div class="field-group">
+        <div class="field">
+          <label>Full Name (for signature)</label>
+          <input type="text" id="si_name" placeholder="Auto-uses Contact name if blank" />
+        </div>
+        <div class="field">
+          <label>Date</label>
+          <input type="text" id="si_date" placeholder="Leave blank to auto-fill today" />
+          <span class="hint">Leave blank to auto-fill today's date when running</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions-bottom">
+      <button class="btn-secondary" id="save-disclosures-btn">💾 Save Disclosures</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════ ACCOUNT ═══════════════════ -->
+<div class="tab-panel" id="tab-account">
+  <div class="fill-bar">
+    <button class="btn-fill" id="run-reg-btn">⚡ Autofill Registration</button>
+  </div>
+  <div class="panel-scroll">
+    <div class="section">
+      <div class="section-title">Account Credentials</div>
+      <div class="field-group">
+        <div class="info-banner">🔒 Saved locally in Chrome only — never sent anywhere.</div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="reg_email" placeholder="Auto-uses Contact email if blank" />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <div class="pw-wrapper">
+            <input type="password" id="reg_password" placeholder="••••••••••" autocomplete="new-password" />
+            <span class="pw-toggle" id="toggle-pw1">👁</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Confirm Password</label>
+          <div class="pw-wrapper">
+            <input type="password" id="reg_password_confirm" placeholder="••••••••••" autocomplete="new-password" />
+            <span class="pw-toggle" id="toggle-pw2">👁</span>
+          </div>
+          <span class="hint" id="pw-match-note"></span>
+        </div>
+      </div>
+    </div>
+    <div class="actions-bottom">
+      <button class="btn-secondary" id="save-reg-btn">💾 Save Credentials</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════ DATA ═══════════════════ -->
+<div class="tab-panel" id="tab-data">
+  <div class="panel-scroll">
+    <div class="section">
+      <div class="section-title">Export &amp; Import</div>
+      <div class="field-group">
+        <div class="info-banner">
+          📦 Export saves <strong>all</strong> your data to a .json file. Import restores it — handy when switching devices or reinstalling Chrome.
+        </div>
+        <button class="btn-secondary" id="export-btn">⬇️ Export All Data</button>
+        <div class="field">
+          <label>Import from .json file</label>
+          <input type="file" id="import-file" accept=".json" />
+        </div>
+        <button class="btn-secondary" id="import-btn">⬆️ Import &amp; Restore</button>
+      </div>
+    </div>
+    <div class="section" style="margin-bottom:8px">
+      <div class="section-title">Danger Zone</div>
+      <div class="field-group">
+        <button class="btn-danger" id="clear-all-btn">🗑 Clear All Saved Data</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="status"></div>
+
+<script src="popup.js"></script>
+</body>
+</html>
