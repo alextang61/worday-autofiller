@@ -243,12 +243,43 @@ function autofillQuestions(data) {
     const target = optionText.toLowerCase();
     const container = findContainer(...labelTerms);
     if (!container) return;
-    const radioMatch = Array.from(container.querySelectorAll('input[type=radio]')).find(r => {
-      const rl = document.querySelector(`label[for="${r.id}"]`);
+
+    // Find the specific question element that matched our search terms
+    const questionEl = [...document.querySelectorAll(
+      "label, [data-automation-id$='Label'], legend, " +
+      "[data-automation-id='questionSetQuestion'], [data-automation-id='questionSetHeader']"
+    )].find(el => labelTerms.some(t => el.textContent.trim().toLowerCase().includes(t.toLowerCase())));
+
+    const allRadios = Array.from(container.querySelectorAll('input[type=radio]'));
+
+    // When multiple radio-name groups share the same container (e.g. multiple Yes/No questions
+    // in one section), find the group whose first radio appears immediately after the question text.
+    // Without this, .find('yes'/'no') grabs the first match across ALL questions, causing wrong clicks.
+    let targetRadios = allRadios;
+    if (questionEl && allRadios.length > 0) {
+      const groups = {};
+      allRadios.forEach(r => { if (r.name) (groups[r.name] = groups[r.name] || []).push(r); });
+      const names = Object.keys(groups);
+      if (names.length > 1) {
+        const after = names.filter(n =>
+          questionEl.compareDocumentPosition(groups[n][0]) & Node.DOCUMENT_POSITION_FOLLOWING
+        );
+        if (after.length > 0) {
+          after.sort((a, b) =>
+            groups[a][0].getBoundingClientRect().top - groups[b][0].getBoundingClientRect().top
+          );
+          targetRadios = groups[after[0]];
+        }
+      }
+    }
+
+    const radioMatch = targetRadios.find(r => {
+      const rl = document.querySelector(`label[for="${r.id}"]`) || r.closest('label');
       const txt = rl?.textContent.trim().toLowerCase() || r.value?.toLowerCase() || '';
       return txt === target || txt.startsWith(target);
     });
     if (radioMatch) { radioMatch.click(); filled++; return; }
+
     const btn = container.querySelector('button[aria-haspopup], button[aria-expanded], button');
     if (btn) {
       btn.click();
