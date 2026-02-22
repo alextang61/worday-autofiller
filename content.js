@@ -173,10 +173,25 @@
 
   // ── Load data helper ─────────────────────────────────────────
   function _withData(cb) {
-    chrome.storage.local.get(['workdayData', 'workdayCreds'], r => {
-      if (!r.workdayData) { _setStatus('⚠ Open the extension and save your info first.', '#c0392b'); return; }
-      cb(r.workdayData, r.workdayCreds || {});
-    });
+    // chrome.runtime.id becomes undefined when the extension is reloaded/updated
+    // while this content script is still alive. Guard against it so the stale
+    // script shows a helpful message instead of throwing an uncaught error.
+    if (!chrome.runtime?.id) {
+      _setStatus('⚠ Extension was updated — reload the page.', '#c0392b');
+      return;
+    }
+    try {
+      chrome.storage.local.get(['workdayData', 'workdayCreds'], r => {
+        if (chrome.runtime.lastError) {
+          _setStatus('⚠ Extension was updated — reload the page.', '#c0392b');
+          return;
+        }
+        if (!r.workdayData) { _setStatus('⚠ Open the extension and save your info first.', '#c0392b'); return; }
+        cb(r.workdayData, r.workdayCreds || {});
+      });
+    } catch {
+      _setStatus('⚠ Extension was updated — reload the page.', '#c0392b');
+    }
   }
 
   // ── Run helper ───────────────────────────────────────────────
