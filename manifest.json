@@ -24,7 +24,7 @@
   "content_scripts": [
     {
       "matches": ["*://*.myworkdayjobs.com/*", "*://*.workday.com/*"],
-      "js": ["content.js"],
+      "js": ["autofill.js", "content.js"],
       "run_at": "document_idle"
     }
   ]
