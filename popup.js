@@ -38,6 +38,7 @@ function val(id) {
 // ── Job entry builder ─────────────────────────────────────
 
 let jobCount = 0;
+let eduCount = 0;
 
 function createJobEntry(data = {}) {
   jobCount++;
@@ -76,8 +77,8 @@ function createJobEntry(data = {}) {
         <label for="job_current_${id}">I currently work here</label>
       </div>
       <div class="field">
-        <label>LinkedIn URL</label>
-        <input type="url" id="job_linkedin_${id}" value="${esc(data.linkedin)}" placeholder="https://linkedin.com/in/yourname" />
+        <label>Location</label>
+        <input type="text" id="job_location_${id}" value="${esc(data.location)}" placeholder="Atlanta, GA" />
       </div>
       <div class="field">
         <label>Description</label>
@@ -110,11 +111,80 @@ function addJob(data = {}) {
   document.getElementById('jobs-container').appendChild(createJobEntry(data));
 }
 
+// ── Education entry builder ───────────────────────────────
+
+function createEduEntry(data = {}) {
+  eduCount++;
+  const id = eduCount;
+  const isCurrent = data.currently_attending || false;
+  const div = document.createElement('div');
+  div.className = 'job-entry';
+  div.dataset.eduId = id;
+  const preview = data.school ? ` — ${data.school}` : '';
+  div.innerHTML = `
+    <div class="job-header">
+      <span class="job-label">Education ${id}${preview}</span>
+      <span class="toggle">▾</span>
+    </div>
+    <div class="job-body" id="edu-body-${id}">
+      <div class="field">
+        <label>School / University</label>
+        <input type="text" id="edu_school_${id}" value="${esc(data.school)}" placeholder="Georgia Tech" />
+      </div>
+      <div class="field">
+        <label>Degree</label>
+        <input type="text" id="edu_degree_${id}" value="${esc(data.degree)}" placeholder="Bachelor of Science" />
+      </div>
+      <div class="field">
+        <label>Field of Study / Major</label>
+        <input type="text" id="edu_field_${id}" value="${esc(data.field_of_study)}" placeholder="Computer Science" />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>From (MM/YYYY)</label>
+          <input type="text" id="edu_start_${id}" value="${esc(data.start_date)}" placeholder="08/2018" />
+        </div>
+        <div class="field">
+          <label>To (MM/YYYY)</label>
+          <input type="text" id="edu_end_${id}" value="${esc(data.end_date)}" placeholder="05/2022" ${isCurrent ? 'disabled' : ''} />
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="edu_current_${id}" ${isCurrent ? 'checked' : ''} />
+        <label for="edu_current_${id}">Currently attending</label>
+      </div>
+      <div class="field">
+        <label>GPA <span style="font-weight:400;color:#999">(optional)</span></label>
+        <input type="text" id="edu_gpa_${id}" value="${esc(data.gpa)}" placeholder="3.8" />
+      </div>
+      <div class="remove-job">Remove this education</div>
+    </div>
+  `;
+  div.querySelector('.job-header').addEventListener('click', () => {
+    const body = document.getElementById(`edu-body-${id}`);
+    const tog  = div.querySelector('.toggle');
+    body.classList.toggle('collapsed');
+    tog.textContent = body.classList.contains('collapsed') ? '▸' : '▾';
+  });
+  div.querySelector(`#edu_current_${id}`).addEventListener('change', function () {
+    document.getElementById(`edu_end_${id}`).disabled = this.checked;
+  });
+  div.querySelector(`#edu_school_${id}`).addEventListener('input', function () {
+    div.querySelector('.job-label').textContent = `Education ${id}${this.value ? ' — ' + this.value : ''}`;
+  });
+  div.querySelector('.remove-job').addEventListener('click', () => div.remove());
+  return div;
+}
+
+function addEdu(data = {}) {
+  document.getElementById('edu-container').appendChild(createEduEntry(data));
+}
+
 // ── Collect all form data ─────────────────────────────────
 
 function collectFormData() {
   const jobs = [];
-  document.querySelectorAll('.job-entry').forEach(entry => {
+  document.querySelectorAll('#jobs-container .job-entry').forEach(entry => {
     const id = entry.dataset.jobId;
     jobs.push({
       title:             document.getElementById(`job_title_${id}`)?.value.trim()    || '',
@@ -122,8 +192,21 @@ function collectFormData() {
       start_date:        document.getElementById(`job_start_${id}`)?.value.trim()    || '',
       end_date:          document.getElementById(`job_end_${id}`)?.value.trim()      || '',
       currently_working: document.getElementById(`job_current_${id}`)?.checked       || false,
-      linkedin:          document.getElementById(`job_linkedin_${id}`)?.value.trim() || '',
-      description:       document.getElementById(`job_desc_${id}`)?.value.trim()    || '',
+      location:          document.getElementById(`job_location_${id}`)?.value.trim() || '',
+      description:       document.getElementById(`job_desc_${id}`)?.value.trim()     || '',
+    });
+  });
+  const education = [];
+  document.querySelectorAll('#edu-container .job-entry').forEach(entry => {
+    const id = entry.dataset.eduId;
+    education.push({
+      school:              document.getElementById(`edu_school_${id}`)?.value.trim()  || '',
+      degree:              document.getElementById(`edu_degree_${id}`)?.value.trim()  || '',
+      field_of_study:      document.getElementById(`edu_field_${id}`)?.value.trim()   || '',
+      start_date:          document.getElementById(`edu_start_${id}`)?.value.trim()   || '',
+      end_date:            document.getElementById(`edu_end_${id}`)?.value.trim()     || '',
+      currently_attending: document.getElementById(`edu_current_${id}`)?.checked      || false,
+      gpa:                 document.getElementById(`edu_gpa_${id}`)?.value.trim()     || '',
     });
   });
   return {
@@ -132,7 +215,7 @@ function collectFormData() {
     linkedin: val('linkedin'),
     address1: val('address1'), address2: val('address2'),
     city: val('city'), zip: val('zip'), state: val('state'), country: val('country'),
-    jobs,
+    jobs, education,
     q_eligible: val('q_eligible'), q_sponsorship: val('q_sponsorship'),
     q_accommodation: val('q_accommodation'),
     q_work_auth: val('q_work_auth'), q_referral: val('q_referral'),
@@ -166,6 +249,10 @@ function populateForm(data) {
   jobCount = 0;
   if (data.jobs?.length) data.jobs.forEach(j => addJob(j));
   else addJob();
+  document.getElementById('edu-container').innerHTML = '';
+  eduCount = 0;
+  if (data.education?.length) data.education.forEach(e => addEdu(e));
+  else addEdu();
 }
 
 function populateCreds(creds) {
@@ -327,6 +414,9 @@ document.getElementById('clear-btn')?.addEventListener('click', () => {
     document.getElementById('jobs-container').innerHTML = '';
     jobCount = 0;
     addJob();
+    document.getElementById('edu-container').innerHTML = '';
+    eduCount = 0;
+    addEdu();
   }
 });
 
@@ -334,6 +424,7 @@ document.getElementById('save-questions-btn')?.addEventListener('click', saveQue
 document.getElementById('save-disclosures-btn')?.addEventListener('click', saveDisclosures);
 document.getElementById('save-reg-btn')?.addEventListener('click', saveCreds);
 document.getElementById('add-job-btn')?.addEventListener('click', () => addJob());
+document.getElementById('add-edu-btn')?.addEventListener('click', () => addEdu());
 document.getElementById('export-btn')?.addEventListener('click', exportData);
 document.getElementById('import-btn')?.addEventListener('click', importData);
 
@@ -342,6 +433,8 @@ document.getElementById('clear-all-btn')?.addEventListener('click', () => {
     chrome.storage.local.clear(() => {
       document.getElementById('jobs-container').innerHTML = '';
       jobCount = 0; addJob();
+      document.getElementById('edu-container').innerHTML = '';
+      eduCount = 0; addEdu();
       showStatus('All data cleared.', 'info');
     });
   }

@@ -249,6 +249,104 @@ function autofillApplication(data) {
     }) || null;
   }
 
+  // ── Education helpers ─────────────────────────────────────────────────────
+
+  function findEduSections() {
+    // Primary: anchor on formField-school (one per section).
+    const anchors = Array.from(document.querySelectorAll(
+      '[data-automation-id="formField-school"], [data-automation-id="formField-schoolName"]'
+    ));
+    if (anchors.length > 0) {
+      return anchors.map(anchor => {
+        let el = anchor.parentElement;
+        for (let i = 0; i < 12; i++) {
+          if (!el || el === document.body) break;
+          const count = el.querySelectorAll(
+            '[data-automation-id="formField-school"], [data-automation-id="formField-schoolName"]'
+          ).length;
+          if (count === 1) return el;
+          el = el.parentElement;
+        }
+        return anchor.parentElement;
+      }).filter(Boolean);
+    }
+    // Fallback: named section containers
+    return Array.from(document.querySelectorAll(
+      "[data-automation-id='educationSection'], [data-automation-id^='education-'], " +
+      "[class*='education']:not(label):not(input)"
+    ));
+  }
+
+  function findAddEduButton() {
+    const byAttr = document.querySelector(
+      "[data-automation-id='educationSection-addButton'], " +
+      "[data-automation-id='education-addButton'], " +
+      "[data-automation-id='addEducation']"
+    );
+    if (byAttr) return byAttr;
+    return Array.from(document.querySelectorAll('button, [role="button"]')).find(btn => {
+      const txt = btn.textContent.trim().toLowerCase();
+      return txt.includes('add') && (txt.includes('education') || txt.includes('school') || txt.includes('degree'));
+    }) || null;
+  }
+
+  function fillEduInSection(section, edu) {
+    function sectionFill(value, ...terms) {
+      if (!value) return;
+      for (const label of section.querySelectorAll("label, [data-automation-id$='Label']")) {
+        const txt = label.textContent.trim().toLowerCase();
+        if (terms.some(t => txt.includes(t.toLowerCase()))) {
+          const parent = label.closest('div, li');
+          const el = parent?.querySelector('input:not([type=hidden]), textarea');
+          if (el && setVal(el, value)) { filled++; return; }
+          if (label.htmlFor) {
+            const el2 = section.querySelector(`#${CSS.escape(label.htmlFor)}`);
+            if (el2 && setVal(el2, value)) { filled++; return; }
+          }
+        }
+      }
+    }
+    function sectionFillDate(dateStr, ...terms) {
+      if (!dateStr) return;
+      const parts = dateStr.split('/');
+      for (const label of section.querySelectorAll('label')) {
+        const txt = label.textContent.trim().toLowerCase();
+        if (terms.some(t => txt.includes(t.toLowerCase()))) {
+          const dateContainer = label.closest('div, li, [data-automation-id]');
+          const inputs = dateContainer ? dateContainer.querySelectorAll('input') : [];
+          if (inputs.length === 1) { if (setVal(inputs[0], dateStr)) filled++; }
+          else if (inputs.length >= 2) {
+            const proto = window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            const setOnly = (el, v) => {
+              if (!el || !v) return false;
+              try { if (setter) setter.call(el, v); else el.value = v; } catch { el.value = v; }
+              const rk = Object.keys(el).find(k => k.startsWith('__reactProps'));
+              if (rk) {
+                const ev = _fakeEv(el);
+                try { if (el[rk].onChange) { el[rk].onChange(ev); return true; } } catch {}
+                try { if (el[rk].onInput)  { el[rk].onInput(ev);  return true; } } catch {}
+              }
+              el.dispatchEvent(new Event('input',  { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            };
+            if (setOnly(inputs[0], parts[0] || '')) filled++;
+            if (setOnly(inputs[inputs.length - 1], parts[parts.length - 1] || '')) filled++;
+            inputs[inputs.length - 1].dispatchEvent(new Event('blur', { bubbles: true }));
+          }
+          return;
+        }
+      }
+    }
+    sectionFill(edu.school,         'school', 'institution', 'university', 'college');
+    sectionFill(edu.degree,         'degree', 'degree type', 'credential', 'degree level');
+    sectionFill(edu.field_of_study, 'field of study', 'major', 'area of study', 'concentration');
+    sectionFillDate(edu.start_date, 'from', 'start', 'begin');
+    if (!edu.currently_attending) sectionFillDate(edu.end_date, 'to', 'end', 'graduation', 'through');
+    if (edu.gpa) sectionFill(edu.gpa, 'gpa', 'grade point average', 'overall gpa');
+  }
+
   function fillJobInSection(section, job) {
     function sectionFill(value, ...terms) {
       if (!value) return;
@@ -304,9 +402,9 @@ function autofillApplication(data) {
     }
     sectionFill(job.title,       'title', 'position', 'job title', 'role');
     sectionFill(job.company,     'company', 'employer', 'organization');
+    sectionFill(job.location,    'location', 'work location', 'job location', 'city');
     sectionFillDate(job.start_date, 'from', 'start', 'begin');
     if (!job.currently_working) sectionFillDate(job.end_date, 'to', 'end', 'through');
-    sectionFill(job.linkedin,    'linkedin', 'linkedin url', 'profile url');
     sectionFill(job.description, 'description', 'responsibilities', 'duties', 'summary');
   }
 
@@ -360,7 +458,40 @@ function autofillApplication(data) {
     }
   })();
 
-  return Promise.all([dropdownsPromise, jobsPromise]).then(() => ({ success: true, filled }));
+  // Fill education entries sequentially, clicking "Add" when more are needed.
+  const eduPromise = (async () => {
+    if (!data.education?.length) return;
+    const initialSections = findEduSections();
+
+    if (initialSections.length >= data.education.length) {
+      data.education.forEach((edu, i) => fillEduInSection(initialSections[i], edu));
+      return;
+    }
+
+    if (initialSections.length === 0) return; // no education section on this page
+
+    initialSections.forEach((section, i) => fillEduInSection(section, data.education[i]));
+
+    for (let i = initialSections.length; i < data.education.length; i++) {
+      const addBtn = findAddEduButton();
+      if (!addBtn) break;
+
+      const countBefore = findEduSections().length;
+      addBtn.click();
+
+      let newSection = null;
+      for (let t = 0; t < 30; t++) {
+        await new Promise(r => setTimeout(r, 100));
+        const current = findEduSections();
+        if (current.length > countBefore) { newSection = current[current.length - 1]; break; }
+      }
+
+      if (newSection) fillEduInSection(newSection, data.education[i]);
+      else break;
+    }
+  })();
+
+  return Promise.all([dropdownsPromise, jobsPromise, eduPromise]).then(() => ({ success: true, filled }));
 }
 
 function autofillQuestions(data) {
