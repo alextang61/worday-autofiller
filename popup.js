@@ -81,6 +81,10 @@ function createJobEntry(data = {}) {
         <label for="job_current_${id}">I currently work here</label>
       </div>
       <div class="field">
+        <label>LinkedIn URL</label>
+        <input type="url" id="job_linkedin_${id}" value="${esc(data.linkedin)}" placeholder="https://linkedin.com/in/yourname" />
+      </div>
+      <div class="field">
         <label>Description</label>
         <textarea id="job_desc_${id}" placeholder="Key responsibilities...">${esc(data.description)}</textarea>
       </div>
@@ -126,12 +130,13 @@ function collectFormData() {
   document.querySelectorAll(".job-entry").forEach(entry => {
     const id = entry.dataset.jobId;
     jobs.push({
-      title:             document.getElementById(`job_title_${id}`)?.value.trim()   || "",
-      company:           document.getElementById(`job_company_${id}`)?.value.trim() || "",
-      start_date:        document.getElementById(`job_start_${id}`)?.value.trim()   || "",
-      end_date:          document.getElementById(`job_end_${id}`)?.value.trim()     || "",
-      currently_working: document.getElementById(`job_current_${id}`)?.checked      || false,
-      description:       document.getElementById(`job_desc_${id}`)?.value.trim()   || "",
+      title:             document.getElementById(`job_title_${id}`)?.value.trim()    || "",
+      company:           document.getElementById(`job_company_${id}`)?.value.trim()  || "",
+      start_date:        document.getElementById(`job_start_${id}`)?.value.trim()    || "",
+      end_date:          document.getElementById(`job_end_${id}`)?.value.trim()      || "",
+      currently_working: document.getElementById(`job_current_${id}`)?.checked       || false,
+      linkedin:          document.getElementById(`job_linkedin_${id}`)?.value.trim() || "",
+      description:       document.getElementById(`job_desc_${id}`)?.value.trim()    || "",
     });
   });
 
@@ -424,7 +429,14 @@ function autofillApplication(data) {
   fill(data.last_name,  "last name",  "surname", "family name");
   fill(data.email,      "email");
   fill(data.phone,      "phone number", "phone", "mobile");
-  fill(data.linkedin,   "linkedin", "website", "portfolio", "url");
+  if (data.linkedin) {
+    const socialEl = document.querySelector(
+      "[data-automation-id='socialNetworkURL'] input, [data-automation-id='socialNetworkUrl'] input, " +
+      "input[placeholder*='linkedin' i]"
+    );
+    if (socialEl && setVal(socialEl, data.linkedin)) filled++;
+    else fill(data.linkedin, "linkedin", "linkedin url", "linkedin profile", "website", "portfolio");
+  }
   fill(data.address1,   "address line 1", "street address", "address 1");
   fill(data.address2,   "address line 2", "address 2", "apt", "suite");
   fill(data.city,       "city", "municipality");
@@ -439,12 +451,40 @@ function autofillApplication(data) {
   // 1. Find all job section containers
   // 2. For each, fill the fields inside using scoped queries
 
-  const jobSections = Array.from(document.querySelectorAll(
-    "[data-automation-id='workExperienceSection'], " +
-    "[data-automation-id='workHistorySection'], " +
-    "[class*='workExperience']:not(label):not(input), " +
-    "[class*='WorkHistory']:not(label):not(input)"
+  // Strategy 1: numbered individual entry IDs (e.g. workExperience-0, workExperience-1)
+  let jobSections = Array.from(document.querySelectorAll(
+    "[data-automation-id^='workExperience-'], [data-automation-id^='workHistory-']"
   ));
+  // Strategy 2: find each "Job Title" label and walk up to its unique containing card
+  if (jobSections.length === 0) {
+    const seen = new WeakSet();
+    jobSections = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
+      .filter(l => {
+        const t = l.textContent.trim().toLowerCase();
+        return t === "job title" || t === "position title" || t === "title" || t === "role";
+      })
+      .map(label => {
+        let el = label.parentElement;
+        for (let i = 0; i < 8; i++) {
+          if (!el || el === document.body) break;
+          const innerLabels = Array.from(el.querySelectorAll("label, [data-automation-id$='Label']"))
+            .map(l => l.textContent.trim().toLowerCase());
+          const hasCompany = innerLabels.some(t => t.includes("company") || t.includes("employer") || t.includes("organization"));
+          const titleCount = innerLabels.filter(t => t === "job title" || t === "title" || t === "position title").length;
+          if (hasCompany && titleCount === 1 && !seen.has(el)) { seen.add(el); return el; }
+          el = el.parentElement;
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+  // Strategy 3: legacy fallback — whole section container
+  if (jobSections.length === 0) {
+    jobSections = Array.from(document.querySelectorAll(
+      "[data-automation-id='workExperienceSection'], [data-automation-id='workHistorySection'], " +
+      "[class*='workExperience']:not(label):not(input), [class*='WorkHistory']:not(label):not(input)"
+    ));
+  }
 
   function fillJobInSection(section, job) {
     function sectionFill(value, ...terms) {
@@ -486,6 +526,7 @@ function autofillApplication(data) {
     sectionFill(job.company,     "company", "employer", "organization");
     sectionFillDate(job.start_date, "from", "start", "begin");
     if (!job.currently_working) sectionFillDate(job.end_date, "to", "end", "through");
+    sectionFill(job.linkedin,    "linkedin", "linkedin url", "profile url");
     sectionFill(job.description, "description", "responsibilities", "duties", "summary");
   }
 
@@ -534,15 +575,26 @@ function autofillQuestions(data) {
 
   function clickWorkdayOption(optionText, ...labelTerms) {
     if (!optionText) return;
+    const target = optionText.toLowerCase();
     const label = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
       .find(l => labelTerms.some(t => l.textContent.trim().toLowerCase().includes(t.toLowerCase())));
-    const container = label?.closest("[data-automation-id], div, li") || label?.parentElement;
-    const btn = container?.querySelector("button[aria-haspopup], button[aria-expanded], button");
+    const container = label?.closest("[data-automation-id], fieldset, div, li") || label?.parentElement;
+    if (!container) return;
+    // Try radio buttons first (Workday Yes/No questions use radios)
+    const radioMatch = Array.from(container.querySelectorAll("input[type=radio]")).find(r => {
+      const rl = document.querySelector(`label[for="${r.id}"]`);
+      const txt = rl?.textContent.trim().toLowerCase() || r.value?.toLowerCase() || "";
+      return txt === target || txt.startsWith(target);
+    });
+    if (radioMatch) { radioMatch.click(); filled++; return; }
+    // Try Workday dropdown button
+    const btn = container.querySelector("button[aria-haspopup], button[aria-expanded], button");
     if (btn) {
       btn.click();
       setTimeout(() => {
         const opts = document.querySelectorAll("[role='option'], [data-automation-id='promptOption']");
-        const m = Array.from(opts).find(o => o.textContent.trim().toLowerCase().includes(optionText.toLowerCase()));
+        const m = Array.from(opts).find(o => o.textContent.trim().toLowerCase() === target) ||
+                  Array.from(opts).find(o => o.textContent.trim().toLowerCase().startsWith(target));
         if (m) { m.click(); filled++; }
       }, 450);
     }
@@ -596,26 +648,32 @@ function autofillDisclosures(data) {
 
   function clickOption(optionText, ...labelTerms) {
     if (!optionText) return;
+    const target = optionText.toLowerCase();
     const label = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
       .find(l => labelTerms.some(t => l.textContent.trim().toLowerCase().includes(t.toLowerCase())));
-    const container = label?.closest("[data-automation-id], div, li") || label?.parentElement;
-    const btn = container?.querySelector("button[aria-haspopup], button[aria-expanded], button");
+    const container = label?.closest("[data-automation-id], fieldset, div, li") || label?.parentElement;
+    if (!container) return;
+    // Try Workday dropdown button first
+    const btn = container.querySelector("button[aria-haspopup], button[aria-expanded], button");
     if (btn) {
       btn.click();
       setTimeout(() => {
         const opts = document.querySelectorAll("[role='option'], [data-automation-id='promptOption']");
-        const m = Array.from(opts).find(o => o.textContent.trim().toLowerCase().includes(optionText.toLowerCase()));
+        // Exact match first to prevent "Male" matching "Female"
+        const m = Array.from(opts).find(o => o.textContent.trim().toLowerCase() === target) ||
+                  Array.from(opts).find(o => o.textContent.trim().toLowerCase().startsWith(target));
         if (m) { m.click(); filled++; }
+        else document.body.click(); // close dropdown if no match
       }, 450);
+      return; // Don't also try radio buttons when a dropdown is present
     }
-    // Also try radio buttons
-    const radios = document.querySelectorAll("input[type=radio]");
-    radios.forEach(r => {
-      if (r.value?.toLowerCase().includes(optionText.toLowerCase()) ||
-          document.querySelector(`label[for="${r.id}"]`)?.textContent.trim().toLowerCase().includes(optionText.toLowerCase())) {
-        r.click(); filled++;
-      }
+    // Radio buttons only if no dropdown found (scoped to container, not whole page)
+    const radioMatch = Array.from(container.querySelectorAll("input[type=radio]")).find(r => {
+      const rl = document.querySelector(`label[for="${r.id}"]`);
+      const txt = rl?.textContent.trim().toLowerCase() || r.value?.toLowerCase() || "";
+      return txt === target || txt.startsWith(target);
     });
+    if (radioMatch) { radioMatch.click(); filled++; }
   }
 
   function fill(value, ...terms) {
@@ -633,9 +691,42 @@ function autofillDisclosures(data) {
   const sigName = data.si_name || ((data.first_name || "") + " " + (data.last_name || "")).trim();
   fill(sigName, "name", "full name", "signature");
 
-  // Date — fall back to today
+  // Date — handle single inputs and multi-part date pickers (MM/DD/YYYY)
   const sigDate = data.si_date || today;
-  fill(sigDate, "date", "today");
+  (function fillSigDate() {
+    const el = findByLabel("date", "today", "signature date");
+    if (el && el.tagName === "INPUT" && setVal(el, sigDate)) { filled++; return; }
+    const parts = sigDate.split("/"); // [MM, DD, YYYY]
+    const dateLabel = Array.from(document.querySelectorAll("label"))
+      .find(l => ["date", "today", "signature date"].some(t => l.textContent.trim().toLowerCase().includes(t)));
+    if (!dateLabel) return;
+    const c = dateLabel.closest("[data-automation-id], fieldset, div") || dateLabel.parentElement;
+    const inputs = c ? Array.from(c.querySelectorAll("input:not([type=hidden])")) : [];
+    if (inputs.length === 1) { if (setVal(inputs[0], sigDate)) filled++; }
+    else if (inputs.length === 2) {
+      if (setVal(inputs[0], parts[0])) filled++;
+      if (setVal(inputs[1], parts[2] || parts[1])) filled++;
+    } else if (inputs.length >= 3) {
+      if (setVal(inputs[0], parts[0])) filled++;
+      if (setVal(inputs[1], parts[1])) filled++;
+      if (setVal(inputs[2], parts[2])) filled++;
+    }
+  })();
+
+  // Disability self-id: check the appropriate checkbox based on saved preference
+  const disVal = (data.d_disability || "").toLowerCase();
+  if (disVal) {
+    const isNo  = disVal.includes("no") || disVal.includes("do not") || disVal.includes("don");
+    const isYes = disVal.includes("yes") || (disVal.includes("have") && disVal.includes("disability"));
+    const allInputs = Array.from(document.querySelectorAll("input[type=checkbox], input[type=radio]"));
+    const disMatch = allInputs.find(cb => {
+      const lbl = (document.querySelector(`label[for="${cb.id}"]`)?.textContent.trim().toLowerCase() || cb.value?.toLowerCase() || "");
+      if (isNo)  return lbl.includes("do not") || lbl.includes("don") || (lbl.includes("no") && lbl.includes("disab"));
+      if (isYes) return (lbl.startsWith("yes") || lbl.startsWith("i have")) && lbl.includes("disab");
+      return false;
+    });
+    if (disMatch && !disMatch.checked) { disMatch.click(); filled++; }
+  }
 
   return { success: true, filled };
 }
@@ -773,10 +864,52 @@ setupPwToggle("toggle-pw2", "reg_password_confirm");
 document.getElementById("reg_password")?.addEventListener("input", checkPwMatch);
 document.getElementById("reg_password_confirm")?.addEventListener("input", checkPwMatch);
 
+// ── Auto-detect Workday page and switch tab ───────────────
+
+function autoDetectTab() {
+  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+    const url = tabs[0]?.url || "";
+    if (!url.includes("myworkdayjobs.com") && !url.includes("workday.com")) return;
+    chrome.scripting.executeScript({
+      target: { tabId: tabs[0].id },
+      func: function () {
+        const text = document.body.innerText.toLowerCase();
+        // Disclosures: voluntary self-id, equal employment, or gender+ethnicity+veteran together
+        if (text.includes("voluntary self-identification") ||
+            text.includes("equal employment opportunity") ||
+            (text.includes("gender") && text.includes("ethnicity") && text.includes("veteran"))) {
+          return "disclosures";
+        }
+        // Registration / account creation
+        if (document.querySelectorAll("input[type=password]").length >= 1 &&
+            (text.includes("create account") || text.includes("sign in") || text.includes("register"))) {
+          return "account";
+        }
+        // Application questions
+        if (text.includes("how did you hear") ||
+            text.includes("visa sponsorship") ||
+            text.includes("work authorization") ||
+            document.querySelector("[data-automation-id='additionalQuestion']")) {
+          return "questions";
+        }
+        // Default: application / my information
+        return "application";
+      }
+    }, results => {
+      if (chrome.runtime.lastError) return;
+      const pageType = results?.[0]?.result;
+      if (!pageType) return;
+      const tabEl = document.querySelector(`.tab[data-tab="${pageType}"]`);
+      if (tabEl && !tabEl.classList.contains("active")) tabEl.click();
+    });
+  });
+}
+
 // ── Init ──────────────────────────────────────────────────
 
 loadAll((data, creds) => {
   if (data)  { populateForm(data);  showStatus("Loaded your saved info.", "info"); setTimeout(() => { document.getElementById("status").className = ""; }, 2500); }
   else       { addJob(); }
   if (creds) populateCreds(creds);
+  autoDetectTab();
 });
