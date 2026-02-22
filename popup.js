@@ -561,24 +561,45 @@ function autofillQuestions(data) {
     return true;
   }
 
-  function findByLabel(...terms) {
-    for (const label of document.querySelectorAll("label, [data-automation-id$='Label']")) {
-      const txt = label.textContent.trim().toLowerCase();
+  // findContainer: searches labels AND Workday question-text divs, then walks up
+  // to the nearest ancestor that actually contains an answer input/button.
+  function findContainer(...terms) {
+    const candidates = [
+      ...document.querySelectorAll("label, [data-automation-id$='Label'], legend"),
+      ...document.querySelectorAll("[data-automation-id='questionSetQuestion'], [data-automation-id='questionSetHeader']"),
+    ];
+    for (const el of candidates) {
+      const txt = el.textContent.trim().toLowerCase();
       if (terms.some(t => txt.includes(t.toLowerCase()))) {
-        if (label.htmlFor) { const el = document.getElementById(label.htmlFor); if (el) return el; }
-        const parent = label.closest("div, li, [data-automation-id]");
-        if (parent) { const el = parent.querySelector("input:not([type=hidden]), textarea, select"); if (el) return el; }
+        let parent = el.parentElement;
+        for (let i = 0; i < 6; i++) {
+          if (!parent || parent === document.body) break;
+          if (parent.querySelector("input:not([type=hidden]), select, textarea, button[aria-haspopup], button[aria-expanded]")) {
+            return parent;
+          }
+          parent = parent.parentElement;
+        }
       }
     }
     return null;
   }
 
+  function findByLabel(...terms) {
+    const c = findContainer(...terms);
+    if (!c) return null;
+    // Prefer label htmlFor link
+    for (const label of c.querySelectorAll("label")) {
+      if (terms.some(t => label.textContent.trim().toLowerCase().includes(t.toLowerCase()))) {
+        if (label.htmlFor) { const el = document.getElementById(label.htmlFor); if (el) return el; }
+      }
+    }
+    return c.querySelector("input:not([type=hidden]), textarea, select") || null;
+  }
+
   function clickWorkdayOption(optionText, ...labelTerms) {
     if (!optionText) return;
     const target = optionText.toLowerCase();
-    const label = Array.from(document.querySelectorAll("label, [data-automation-id$='Label']"))
-      .find(l => labelTerms.some(t => l.textContent.trim().toLowerCase().includes(t.toLowerCase())));
-    const container = label?.closest("[data-automation-id], fieldset, div, li") || label?.parentElement;
+    const container = findContainer(...labelTerms);
     if (!container) return;
     // Try radio buttons first (Workday Yes/No questions use radios)
     const radioMatch = Array.from(container.querySelectorAll("input[type=radio]")).find(r => {
@@ -691,26 +712,19 @@ function autofillDisclosures(data) {
   const sigName = data.si_name || ((data.first_name || "") + " " + (data.last_name || "")).trim();
   fill(sigName, "name", "full name", "signature");
 
-  // Date — handle single inputs and multi-part date pickers (MM/DD/YYYY)
+  // Date — always today in MM/DD/YYYY; handle label-based and placeholder-based finding
   const sigDate = data.si_date || today;
   (function fillSigDate() {
+    // Try label-based search first (covers both <label> and question-text divs)
     const el = findByLabel("date", "today", "signature date");
     if (el && el.tagName === "INPUT" && setVal(el, sigDate)) { filled++; return; }
-    const parts = sigDate.split("/"); // [MM, DD, YYYY]
-    const dateLabel = Array.from(document.querySelectorAll("label"))
-      .find(l => ["date", "today", "signature date"].some(t => l.textContent.trim().toLowerCase().includes(t)));
-    if (!dateLabel) return;
-    const c = dateLabel.closest("[data-automation-id], fieldset, div") || dateLabel.parentElement;
-    const inputs = c ? Array.from(c.querySelectorAll("input:not([type=hidden])")) : [];
-    if (inputs.length === 1) { if (setVal(inputs[0], sigDate)) filled++; }
-    else if (inputs.length === 2) {
-      if (setVal(inputs[0], parts[0])) filled++;
-      if (setVal(inputs[1], parts[2] || parts[1])) filled++;
-    } else if (inputs.length >= 3) {
-      if (setVal(inputs[0], parts[0])) filled++;
-      if (setVal(inputs[1], parts[1])) filled++;
-      if (setVal(inputs[2], parts[2])) filled++;
-    }
+    // Fallback: any date input recognisable by placeholder or automation-id
+    const byPlaceholder = document.querySelector(
+      "input[placeholder*='MM/DD/YYYY'], input[placeholder*='mm/dd/yyyy'], " +
+      "input[data-automation-id='date'], input[data-automation-id='todayDate'], " +
+      "input[data-automation-id='signatureDate']"
+    );
+    if (byPlaceholder && setVal(byPlaceholder, sigDate)) { filled++; return; }
   })();
 
   // Disability self-id: check the appropriate checkbox based on saved preference
