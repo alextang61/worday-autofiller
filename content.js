@@ -160,9 +160,12 @@
         (text.includes('create account') || text.includes('sign in') || text.includes('register'))) {
       return 'account';
     }
-    if (text.includes('how did you hear') || text.includes('visa sponsorship') ||
-        text.includes('work authorization') ||
-        document.querySelector("[data-automation-id='additionalQuestion']")) {
+    // Require actual Workday question elements — not just keyword text — because
+    // application info pages often contain legal disclaimers mentioning
+    // "work authorization" and "sponsorship", which would cause false positives.
+    if (document.querySelector(
+          "[data-automation-id='questionSetQuestion'], [data-automation-id='additionalQuestion']"
+        ) || text.includes('how did you hear about')) {
       return 'questions';
     }
     return 'application';

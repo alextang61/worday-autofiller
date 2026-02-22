@@ -23,11 +23,26 @@ function autofillApplication(data) {
     for (const label of document.querySelectorAll("label, [data-automation-id$='Label'], [class*='label']")) {
       const txt = label.textContent.trim().toLowerCase();
       if (terms.some(t => txt.includes(t.toLowerCase()))) {
+        // 1. Standard htmlFor → id linkage
         if (label.htmlFor) { const el = document.getElementById(label.htmlFor); if (el) return el; }
-        const labelId = label.id;
+        // 2. aria-labelledby back-reference; also check data-automation-id since
+        //    Workday uses that instead of id on its label elements.
+        const labelId = label.id || label.getAttribute('data-automation-id');
         if (labelId) { const el = document.querySelector(`[aria-labelledby="${labelId}"]`); if (el) return el; }
-        const parent = label.closest('div, li, section, [data-automation-id]');
-        if (parent) { const el = parent.querySelector('input:not([type=hidden]), textarea, select'); if (el && el !== label) return el; }
+        // 3. Walk up ancestors until one contains an input. Workday places the label
+        //    and the input in sibling divs inside a field container, so
+        //    label.closest('div') (the label's own parent) never contains the input.
+        let ancestor = label.parentElement;
+        for (let i = 0; i < 6; i++) {
+          if (!ancestor || ancestor === document.body) break;
+          // Prefer text-type inputs so we don't accidentally grab a select (e.g.
+          // phone-type dropdown) when there is a text input in the same container.
+          const el = ancestor.querySelector(
+            'input[type=text], input[type=tel], input[type=email], input[type=url], textarea'
+          ) || ancestor.querySelector('input:not([type=hidden]):not([type=submit]):not([type=checkbox]):not([type=radio])');
+          if (el && el !== label) return el;
+          ancestor = ancestor.parentElement;
+        }
       }
     }
     return null;
