@@ -262,16 +262,24 @@ function autofillQuestions(data) {
   }
 
   function fill(value, ...terms) {
-    if (!value) return;
+    if (!value) return false;
     const el = findByLabel(...terms);
-    if (el && setVal(el, value)) filled++;
+    if (el && setVal(el, value)) { filled++; return true; }
+    return false;
   }
 
   fill(data.q_referral, 'hear about', 'referral source', 'how did you', 'how did you find', 'source');
-  clickWorkdayOption(data.q_eligible,    'legally authorized', 'eligible to work', 'authorized to work', 'work in the us');
-  clickWorkdayOption(data.q_sponsorship, 'sponsorship', 'visa sponsorship', 'require sponsorship');
+  clickWorkdayOption(data.q_eligible,
+    'legally eligible', 'eligible for employment', 'eligible to work in',
+    'legally authorized', 'eligible to work', 'authorized to work', 'work in the us', 'work in this country');
+  clickWorkdayOption(data.q_sponsorship, 'sponsorship', 'visa sponsorship', 'require sponsorship', 'now or in the future');
   clickWorkdayOption(data.q_work_auth,   'work authorization', 'authorization status', 'visa status', 'citizenship');
-  fill(data.q_salary, 'salary', 'compensation', 'desired salary', 'salary requirement', 'expected salary');
+  clickWorkdayOption(data.q_accommodation,
+    'essential function', 'reasonable accommodation', 'perform the essential', 'with or without accommodation');
+  // Salary: try free-text fill first, fall back to dropdown click
+  if (!fill(data.q_salary, 'salary', 'compensation', 'desired salary', 'salary requirement', 'salary expectation', 'expected salary', 'what are your salary')) {
+    clickWorkdayOption(data.q_salary, 'salary', 'compensation', 'desired salary', 'salary requirement', 'salary expectation', 'expected salary', 'what are your salary');
+  }
   clickWorkdayOption(data.q_salary_type, 'salary type', 'pay type', 'compensation type');
 
   return { success: true, filled };

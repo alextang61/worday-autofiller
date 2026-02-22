@@ -134,6 +134,7 @@ function collectFormData() {
     city: val('city'), zip: val('zip'), state: val('state'), country: val('country'),
     jobs,
     q_eligible: val('q_eligible'), q_sponsorship: val('q_sponsorship'),
+    q_accommodation: val('q_accommodation'),
     q_work_auth: val('q_work_auth'), q_referral: val('q_referral'),
     q_salary: val('q_salary'), q_salary_type: val('q_salary_type'),
     d_gender: val('d_gender'), d_ethnicity: val('d_ethnicity'),
@@ -155,7 +156,7 @@ function collectCreds() {
 function populateForm(data) {
   const simple = ['first_name','last_name','email','phone','phone_type','linkedin',
                   'address1','address2','city','zip','state','country',
-                  'q_eligible','q_sponsorship','q_work_auth','q_referral','q_salary','q_salary_type',
+                  'q_eligible','q_sponsorship','q_accommodation','q_work_auth','q_referral','q_salary','q_salary_type',
                   'd_gender','d_ethnicity','d_veteran','d_disability','si_name','si_date'];
   simple.forEach(f => {
     const el = document.getElementById(f);
