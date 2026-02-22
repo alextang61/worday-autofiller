@@ -117,12 +117,25 @@
   document.body.appendChild(wrap);
 
   // ── Toggle ───────────────────────────────────────────────────
-  tab.addEventListener('click', e => { e.stopPropagation(); pop.classList.toggle('wday-open'); });
-  document.addEventListener('click', e => { if (!wrap.contains(e.target)) pop.classList.remove('wday-open'); });
+  let _autoOpen = false;
 
-  // Auto-open if the setting is enabled
+  // Load setting on page init; keep _autoOpen in sync with any future changes
+  // from the popup toggle so the click handler always has the latest value.
   chrome.storage.local.get('sidebarAutoOpen', r => {
-    if (r.sidebarAutoOpen) pop.classList.add('wday-open');
+    _autoOpen = !!r.sidebarAutoOpen;
+    if (_autoOpen) pop.classList.add('wday-open');
+  });
+  chrome.storage.onChanged.addListener(changes => {
+    if ('sidebarAutoOpen' in changes) _autoOpen = !!changes.sidebarAutoOpen.newValue;
+  });
+
+  tab.addEventListener('click', e => { e.stopPropagation(); pop.classList.toggle('wday-open'); });
+  // When auto-open is on, never close on outside clicks (autofill code calls
+  // document.body.click() internally to dismiss dropdowns, which would otherwise
+  // collapse the sidebar mid-fill).
+  document.addEventListener('click', e => {
+    if (_autoOpen) return;
+    if (!wrap.contains(e.target)) pop.classList.remove('wday-open');
   });
 
   // ── Status helper ────────────────────────────────────────────
@@ -179,10 +192,18 @@
       const type = detectPageType();
       const labels = { application: 'Application', questions: 'Questions', disclosures: 'Disclosures', account: 'Registration' };
       _setStatus(`Detected: ${labels[type] || type}…`, '#0052cc');
-      if (type === 'application')  _run(autofillApplication, data);
-      else if (type === 'questions')   _run(autofillQuestions, data);
-      else if (type === 'disclosures') _run(autofillDisclosures, data);
-      else if (type === 'account') {
+      if (type === 'application') {
+        // Application pages often embed employment-eligibility questions alongside
+        // the standard fields, so always run both functions together.
+        autofillApplication(data).then(appRes => {
+          const qRes = autofillQuestions(data);
+          _setStatus(`✓ ${appRes.filled + qRes.filled} field(s) filled`);
+        });
+      } else if (type === 'questions') {
+        _run(autofillQuestions, data);
+      } else if (type === 'disclosures') {
+        _run(autofillDisclosures, data);
+      } else if (type === 'account') {
         const payload = { email: creds.reg_email || data.email || '', password: creds.reg_password || '', confirm: creds.reg_password_confirm || creds.reg_password || '' };
         if (!payload.email) { _setStatus('⚠ No email saved!', '#c0392b'); return; }
         _run(autofillRegistration, payload);
