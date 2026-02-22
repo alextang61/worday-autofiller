@@ -12,7 +12,7 @@ function autofillApplication(data) {
     const proto  = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
     el.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-    if (setter) setter.call(el, value); else el.value = value;
+    try { if (setter) setter.call(el, value); else el.value = value; } catch { el.value = value; }
     el.dispatchEvent(new InputEvent('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
@@ -246,7 +246,7 @@ function autofillApplication(data) {
             const setOnly = (el, v) => {
               if (!el || !v) return false;
               el.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-              if (setter) setter.call(el, v); else el.value = v;
+              try { if (setter) setter.call(el, v); else el.value = v; } catch { el.value = v; }
               el.dispatchEvent(new InputEvent('input', { bubbles: true }));
               el.dispatchEvent(new Event('change', { bubbles: true }));
               return true;
@@ -329,7 +329,7 @@ function autofillQuestions(data) {
     if (!el || !value) return false;
     const proto  = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-    if (setter) setter.call(el, value); else el.value = value;
+    try { if (setter) setter.call(el, value); else el.value = value; } catch { el.value = value; }
     ['input', 'change', 'blur'].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true })));
     return true;
   }
@@ -467,7 +467,7 @@ function autofillDisclosures(data) {
     if (!el || !value) return false;
     const proto  = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-    if (setter) setter.call(el, value); else el.value = value;
+    try { if (setter) setter.call(el, value); else el.value = value; } catch { el.value = value; }
     ['input', 'change', 'blur'].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true })));
     return true;
   }
@@ -560,7 +560,7 @@ function autofillRegistration(creds) {
   function setVal(el, value) {
     if (!el || !value) return false;
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    if (setter) setter.call(el, value); else el.value = value;
+    try { if (setter) setter.call(el, value); else el.value = value; } catch { el.value = value; }
     ['input', 'change', 'blur'].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true })));
     return true;
   }
