@@ -7,11 +7,30 @@
 function autofillApplication(data) {
   let filled = 0;
 
+  // Minimal fake event passed directly to React prop handlers.
+  // bubbles:false means nothing reaches cx-applyflow.min.js.
+  function _fakeEv(el) {
+    return { target: el, currentTarget: el, type: 'change', bubbles: false,
+             preventDefault: () => {}, stopPropagation: () => {} };
+  }
+
   function setVal(el, value) {
     if (!el || value === undefined || value === null || value === '') return false;
     const proto  = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
     try { if (setter) setter.call(el, value); else el.value = value; } catch { el.value = value; }
+
+    // React 17+ stores the component's props on the DOM node as __reactProps$<hash>.
+    // Calling onChange directly avoids dispatching any bubbling DOM events, which
+    // prevents cx-applyflow.min.js from receiving them and crashing its XState machine.
+    const rk = Object.keys(el).find(k => k.startsWith('__reactProps'));
+    if (rk) {
+      const ev = _fakeEv(el);
+      try { if (el[rk].onChange) { el[rk].onChange(ev); return true; } } catch {}
+      try { if (el[rk].onInput)  { el[rk].onInput(ev);  return true; } } catch {}
+    }
+
+    // Fallback for non-React inputs: DOM events (will bubble — may trigger cx-applyflow).
     el.dispatchEvent(new Event('input',  { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     return true;
@@ -67,12 +86,25 @@ function autofillApplication(data) {
     const container = label?.closest('[data-automation-id], div, li') || label?.parentElement;
     const btn = container?.querySelector('button[aria-haspopup], button[aria-expanded]');
     if (btn) {
-      btn.click();
+      // Prefer React's onClick prop to avoid a bubbling DOM click reaching cx-applyflow.
+      const _reactClick = el => {
+        const rk = el && Object.keys(el).find(k => k.startsWith('__reactProps'));
+        if (rk && el[rk]?.onClick) {
+          try {
+            el[rk].onClick({ preventDefault: ()=>{}, stopPropagation: ()=>{},
+                             target: el, currentTarget: el, type: 'click', bubbles: false });
+            return true;
+          } catch {}
+        }
+        el.click(); // fallback DOM click
+        return false;
+      };
+      _reactClick(btn);
       return new Promise(resolve => {
         setTimeout(() => {
           const options = document.querySelectorAll("[role='option'], [data-automation-id='promptOption'], li[tabindex]");
           const match = Array.from(options).find(o => o.textContent.trim().toLowerCase().includes(optionText.toLowerCase()));
-          if (match) { match.click(); filled++; }
+          if (match) { _reactClick(match); filled++; }
           else document.body.click(); // close the dropdown if no match
           resolve();
         }, 600);
@@ -249,9 +281,14 @@ function autofillApplication(data) {
             const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
             const setOnly = (el, v) => {
               if (!el || !v) return false;
-              el.dispatchEvent(new Event('focus', { bubbles: true }));
               try { if (setter) setter.call(el, v); else el.value = v; } catch { el.value = v; }
-              el.dispatchEvent(new Event('input', { bubbles: true }));
+              const rk = Object.keys(el).find(k => k.startsWith('__reactProps'));
+              if (rk) {
+                const ev = _fakeEv(el);
+                try { if (el[rk].onChange) { el[rk].onChange(ev); return true; } } catch {}
+                try { if (el[rk].onInput)  { el[rk].onInput(ev);  return true; } } catch {}
+              }
+              el.dispatchEvent(new Event('input',  { bubbles: true }));
               el.dispatchEvent(new Event('change', { bubbles: true }));
               return true;
             };
