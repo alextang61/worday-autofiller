@@ -366,6 +366,25 @@ function autoDetectTab() {
   });
 }
 
+// ── Sidebar toggle ────────────────────────────────────────
+
+chrome.storage.local.get('sidebarAutoOpen', r => {
+  const cb = document.getElementById('sidebar-toggle');
+  if (cb) cb.checked = !!r.sidebarAutoOpen;
+});
+
+document.getElementById('sidebar-toggle')?.addEventListener('change', function () {
+  const open = this.checked;
+  chrome.storage.local.set({ sidebarAutoOpen: open });
+  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+    if (tabs[0]?.id) {
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'setSidebarOpen', open }, () => {
+        void chrome.runtime.lastError; // suppress error if content script not present
+      });
+    }
+  });
+});
+
 // ── Init ──────────────────────────────────────────────────
 
 loadAll((data, creds) => {

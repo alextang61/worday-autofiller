@@ -20,6 +20,45 @@
     .header h1 { font-size: 14px; font-weight: 700; }
     .header p  { font-size: 10px; opacity: 0.8; margin-top: 1px; }
 
+    .sidebar-toggle-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .toggle-label {
+      font-size: 9px;
+      color: rgba(255,255,255,0.85);
+      font-weight: 600;
+    }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+      cursor: pointer;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.25);
+      border-radius: 20px;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 3px; bottom: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: rgba(255,255,255,0.55); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
+
     .tabs {
       display: flex;
       background: white;

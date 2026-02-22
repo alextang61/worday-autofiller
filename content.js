@@ -120,6 +120,11 @@
   tab.addEventListener('click', e => { e.stopPropagation(); pop.classList.toggle('wday-open'); });
   document.addEventListener('click', e => { if (!wrap.contains(e.target)) pop.classList.remove('wday-open'); });
 
+  // Auto-open if the setting is enabled
+  chrome.storage.local.get('sidebarAutoOpen', r => {
+    if (r.sidebarAutoOpen) pop.classList.add('wday-open');
+  });
+
   // ── Status helper ────────────────────────────────────────────
   const _statusEl = document.getElementById('wday-pop-status');
   let _statusTimer = null;
@@ -200,6 +205,12 @@
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.action === 'detectPageType') {
       sendResponse({ pageType: detectPageType() });
+      return;
+    }
+    if (msg.action === 'setSidebarOpen') {
+      if (msg.open) pop.classList.add('wday-open');
+      else pop.classList.remove('wday-open');
+      sendResponse({});
       return;
     }
     if (msg.action === 'autofill') {

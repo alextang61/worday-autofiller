@@ -11,8 +11,11 @@ function autofillApplication(data) {
     if (!el || value === undefined || value === null || value === '') return false;
     const proto  = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    el.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
     if (setter) setter.call(el, value); else el.value = value;
-    ['input', 'change', 'blur'].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true })));
+    el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
     return true;
   }
 
@@ -221,8 +224,23 @@ function autofillApplication(data) {
           const inputs = dateContainer ? dateContainer.querySelectorAll('input') : [];
           if (inputs.length === 1) { if (setVal(inputs[0], dateStr)) filled++; }
           else if (inputs.length >= 2) {
-            if (setVal(inputs[0], parts[0] || '')) filled++;
-            if (setVal(inputs[inputs.length - 1], parts[parts.length - 1] || '')) filled++;
+            // Fill all inputs without intermediate blurs so validation doesn't fire
+            // against a half-filled date, then blur the container once at the end.
+            const proto = window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            const setOnly = (el, v) => {
+              if (!el || !v) return false;
+              el.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
+              if (setter) setter.call(el, v); else el.value = v;
+              el.dispatchEvent(new InputEvent('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            };
+            if (setOnly(inputs[0], parts[0] || '')) filled++;
+            if (setOnly(inputs[inputs.length - 1], parts[parts.length - 1] || '')) filled++;
+            // One blur on the last input after both are filled — this is what Workday
+            // uses to validate the complete date, matching the real click-in/click-out.
+            inputs[inputs.length - 1].dispatchEvent(new FocusEvent('blur', { bubbles: true }));
           }
           return;
         }
